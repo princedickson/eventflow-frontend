@@ -15,12 +15,18 @@ import type { EventSeatResponse } from '../types';
  */
 export function useSeatSocket(eventId: number, onSeatUpdate: (seat: EventSeatResponse) => void) {
   const callbackRef = useRef(onSeatUpdate);
-  callbackRef.current = onSeatUpdate;
+
+  // Keeps callbackRef.current pointing at the latest onSeatUpdate function,
+  // without needing to restart the WebSocket connection every time it
+  // changes — that's why this is a separate effect from the one below.
+  useEffect(() => {
+    callbackRef.current = onSeatUpdate;
+  }, [onSeatUpdate]);
 
   useEffect(() => {
     const stompClient = new Client({
       webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
-      reconnectDelay: 5000, // auto-reconnect if the connection drops
+      reconnectDelay: 5000,
       onConnect: () => {
         stompClient.subscribe(`/topic/events/${eventId}/seats`, (message) => {
           const seat: EventSeatResponse = JSON.parse(message.body);
@@ -31,9 +37,6 @@ export function useSeatSocket(eventId: number, onSeatUpdate: (seat: EventSeatRes
 
     stompClient.activate();
 
-    // Cleanup — runs when the component unmounts or eventId changes, so we
-    // never leave stale connections open (e.g. navigating away from an
-    // event page shouldn't keep listening to it forever).
     return () => {
       stompClient.deactivate();
     };
